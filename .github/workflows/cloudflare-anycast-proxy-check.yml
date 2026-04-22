@@ -64,6 +64,8 @@ jobs:
 
           def sample_ips(cidr, count):
               network = ipaddress.ip_network(cidr)
+              if network.num_addresses == 1:
+                  return [str(network.network_address)]
               hosts_iter = network.hosts()
               ips = []
               for _ in range(count):
@@ -93,13 +95,13 @@ jobs:
                   ).encode("ascii")
                   tls_sock.sendall(req)
                   response_head = b""
-                  while b"\r\n" not in response_head and len(response_head) < 4096:
+                  while b"\r\n\r\n" not in response_head and len(response_head) < 8192:
                       chunk = tls_sock.recv(64)
                       if not chunk:
                           break
                       response_head += chunk
 
-                  first_line = response_head.split(b"\r\n", 1)[0].decode("iso-8859-1", errors="ignore").strip()
+                  first_line = response_head.split(b"\r\n", 1)[0].decode("iso-8859-1", errors="replace").strip()
                   if not first_line:
                       return False, "no_http_response"
                   status_line = first_line
