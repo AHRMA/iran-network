@@ -63,15 +63,14 @@ jobs:
               return [line.strip() for line in text.splitlines() if line.strip()]
 
           def sample_ips(cidr, count):
-              network = ipaddress.ip_network(cidr, strict=False)
-              if network.num_addresses == 1:
-                  return [str(network.network_address)]
+              network = ipaddress.ip_network(cidr)
+              hosts_iter = network.hosts()
               ips = []
-              for i in range(count):
-                  offset = i + 1
-                  if offset >= network.num_addresses:
+              for _ in range(count):
+                  try:
+                      ips.append(str(next(hosts_iter)))
+                  except StopIteration:
                       break
-                  ips.append(str(network.network_address + offset))
               return ips or [str(network.network_address)]
 
           def check_ip(ip):
@@ -93,10 +92,17 @@ jobs:
                       "Connection: close\r\n\r\n"
                   ).encode("ascii")
                   tls_sock.sendall(req)
-                  first_line = tls_sock.recv(128).decode("iso-8859-1", errors="ignore").splitlines()
+                  response_head = b""
+                  while b"\r\n" not in response_head and len(response_head) < 4096:
+                      chunk = tls_sock.recv(64)
+                      if not chunk:
+                          break
+                      response_head += chunk
+
+                  first_line = response_head.split(b"\r\n", 1)[0].decode("iso-8859-1", errors="ignore").strip()
                   if not first_line:
                       return False, "no_http_response"
-                  status_line = first_line[0]
+                  status_line = first_line
                   parts = status_line.split()
                   if len(parts) < 2 or not parts[1].isdigit():
                       return False, f"invalid_http_status_line:{status_line}"
