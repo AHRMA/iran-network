@@ -1,0 +1,71 @@
+# upload_to_github_release.py
+import os
+import requests
+import sys
+from pathlib import Path
+
+def upload_to_github_release(repo, token, tag_name, file_path):
+    """Upload wheel file to GitHub Release"""
+    api_url = f"https://api.github.com/repos/{repo}/releases/tags/{tag_name}"
+    
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Accept": "application/vnd.github.v3+json"
+    }
+    
+    # Get release info
+    print(f"Fetching release: {tag_name}")
+    response = requests.get(api_url, headers=headers)
+    
+    if response.status_code != 200:
+        print(f"Release not found. Creating new release...")
+        # Create release if it doesn't exist
+        create_url = f"https://api.github.com/repos/{repo}/releases"
+        release_data = {
+            "tag_name": tag_name,
+            "name": f"PyTorch Wheels - {tag_name}",
+            "body": "PyTorch wheel files",
+            "draft": False,
+            "prerelease": False
+        }
+        response = requests.post(create_url, headers=headers, json=release_data)
+        response.raise_for_status()
+        release = response.json()
+    else:
+        release = response.json()
+    
+    # Upload asset
+    upload_url = release['upload_url'].split('{')[0]
+    file_name = Path(file_path).name
+    
+    with open(file_path, 'rb') as f:
+        files = {file_name: f}
+        upload_headers = {
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/octet-stream"
+        }
+        upload_response = requests.post(
+            f"{upload_url}?name={file_name}",
+            headers=upload_headers,
+            data=f
+        )
+        
+    if upload_response.status_code in [201, 200]:
+        print(f"✓ Successfully uploaded {file_name}")
+    else:
+        print(f"✗ Upload failed: {upload_response.text}")
+
+if __name__ == "__main__":
+    repo = os.environ.get("GITHUB_REPOSITORY")
+    token = os.environ.get("GITHUB_TOKEN")
+    
+    if not repo or not token:
+        print("Set GITHUB_REPOSITORY and GITHUB_TOKEN environment variables")
+        sys.exit(1)
+    
+    file_path = Path("downloads/torch-2.5.1+cu118-cp311-cp311-linux_x86_64.whl")
+    if not file_path.exists():
+        print(f"File not found: {file_path}")
+        sys.exit(1)
+    
+    upload_to_github_release(repo, token, "torch-wheels-v1", file_path)
